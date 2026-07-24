@@ -1,16 +1,7 @@
 pipeline {
     agent { label "Jenkins-Agent" }
-
-    parameters {
-        string(
-            name: "IMAGE_TAG",
-            defaultValue: "",
-            description: "Docker image tag, for example: 1.0.0-17"
-        )
-    }
-
     environment {
-        IMAGE_NAME = "rashmikaharshamal/register-app"
+              APP_NAME = "register-app-pipeline"
     }
 
     stages {
@@ -21,67 +12,34 @@ pipeline {
         }
 
         stage("Checkout from SCM") {
-            steps {
-                git branch: "main",
-                    credentialsId: "github",
-                    url: "https://github.com/RashmikaHarshamal/gitops-register-app.git"
-            }
+               steps {
+                   git branch: 'main', credentialsId: 'github', url: 'https://github.com/RashmikaHarshamal/gitops-register-app.git'
+               }
         }
 
-        stage("Validate Image Tag") {
-            steps {
-                script {
-                    if (!params.IMAGE_TAG?.trim()) {
-                        error("IMAGE_TAG is empty. Provide a tag such as 1.0.0-17.")
-                    }
-                }
-            }
-        }
-
-        stage("Update Deployment Image") {
+        stage("Update the Deployment Tags") {
             steps {
                 sh """
-                    echo "Current deployment:"
-                    grep "image:" deployment.yaml
-
-                    sed -i "s|image: ${IMAGE_NAME}:.*|image: ${IMAGE_NAME}:${IMAGE_TAG}|" deployment.yaml
-
-                    echo "Updated deployment:"
-                    grep "image:" deployment.yaml
+                   cat deployment.yaml
+                   sed -i 's/${APP_NAME}.*/${APP_NAME}:${IMAGE_TAG}/g' deployment.yaml
+                   cat deployment.yaml
                 """
             }
         }
 
-        stage("Commit and Push Changes") {
+        stage("Push the changed deployment file to Git") {
             steps {
                 sh """
-                    git config user.name "RashmikaHarshamal"
-                    git config user.email "rashmikaharshamal169@gmail.com"
-
-                    git add deployment.yaml
-
-                    if git diff --cached --quiet; then
-                        echo "No deployment change was required."
-                    else
-                        git commit -m "Update deployment image to ${IMAGE_TAG}"
-                    fi
+                   git config --global user.name "RashmikaHarshamal"
+                   git config --global user.email "rashmikaharshamal169@gmail.com"
+                   git add deployment.yaml
+                   git commit -m "Updated Deployment Manifest"
                 """
-
-                withCredentials([
-                    gitUsernamePassword(
-                        credentialsId: "github",
-                        gitToolName: "Default"
-                    )
-                ]) {
-                    sh """
-                        if git log -1 --pretty=%B | grep -q "Update deployment image to ${IMAGE_TAG}"; then
-                            git push origin main
-                        else
-                            echo "Nothing new to push."
-                        fi
-                    """
+                withCredentials([gitUsernamePassword(credentialsId: 'github', gitToolName: 'Default')]) {
+                  sh "git push https://github.com/RashmikaHarshamal/gitops-register-app.git main"
                 }
             }
         }
+      
     }
 }
