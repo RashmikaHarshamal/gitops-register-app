@@ -1,7 +1,16 @@
 pipeline {
     agent { label "Jenkins-Agent" }
+
+    parameters {
+        string(
+            name: "IMAGE_TAG",
+            defaultValue: "",
+            description: "Docker image tag, example: 1.0.0-26"
+        )
+    }
+
     environment {
-              APP_NAME = "register-app-pipeline"
+        IMAGE_REPOSITORY = "rashmikaharshamal/register-app"
     }
 
     stages {
@@ -12,34 +21,65 @@ pipeline {
         }
 
         stage("Checkout from SCM") {
-               steps {
-                   git branch: 'main', credentialsId: 'github', url: 'https://github.com/RashmikaHarshamal/gitops-register-app.git'
-               }
-        }
-
-        stage("Update the Deployment Tags") {
             steps {
-                sh """
-                   cat deployment.yaml
-                   sed -i 's/${APP_NAME}.*/${APP_NAME}:${IMAGE_TAG}/g' deployment.yaml
-                   cat deployment.yaml
-                """
+                git branch: "main",
+                    credentialsId: "github",
+                    url: "https://github.com/RashmikaHarshamal/gitops-register-app.git"
             }
         }
 
-        stage("Push the changed deployment file to Git") {
+        stage("Validate Image Tag") {
             steps {
-                sh """
-                   git config --global user.name "RashmikaHarshamal"
-                   git config --global user.email "rashmikaharshamal169@gmail.com"
-                   git add deployment.yaml
-                   git commit -m "Updated Deployment Manifest"
-                """
-                withCredentials([gitUsernamePassword(credentialsId: 'github', gitToolName: 'Default')]) {
-                  sh "git push https://github.com/RashmikaHarshamal/gitops-register-app.git main"
+                script {
+                    if (!params.IMAGE_TAG?.trim()) {
+                        error("IMAGE_TAG is empty. Example: 1.0.0-26")
+                    }
+
+                    echo "Received IMAGE_TAG: ${params.IMAGE_TAG}"
                 }
             }
         }
-      
+
+        stage("Update Deployment Image") {
+            steps {
+                sh """
+                    echo "Before update:"
+                    grep "image:" deployment.yaml
+
+                    sed -i "s|image: ${IMAGE_REPOSITORY}:.*|image: ${IMAGE_REPOSITORY}:${params.IMAGE_TAG}|" deployment.yaml
+
+                    echo "After update:"
+                    grep "image:" deployment.yaml
+                """
+            }
+        }
+
+        stage("Commit and Push Deployment") {
+            steps {
+                sh """
+                    git config user.name "RashmikaHarshamal"
+                    git config user.email "rashmikaharshamal169@gmail.com"
+
+                    git add deployment.yaml
+
+                    if git diff --cached --quiet; then
+                        echo "No deployment change found."
+                    else
+                        git commit -m "Update deployment image to ${params.IMAGE_TAG}"
+                    fi
+                """
+
+                withCredentials([
+                    gitUsernamePassword(
+                        credentialsId: "github",
+                        gitToolName: "Default"
+                    )
+                ]) {
+                    sh """
+                        git push origin main
+                    """
+                }
+            }
+        }
     }
 }
