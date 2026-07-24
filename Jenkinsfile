@@ -56,28 +56,36 @@ pipeline {
 
         stage("Commit and Push Deployment") {
             steps {
-                sh """
-                    git config user.name "RashmikaHarshamal"
-                    git config user.email "rashmikaharshamal169@gmail.com"
-
-                    git add deployment.yaml
-
-                    if git diff --cached --quiet; then
-                        echo "No deployment change found."
-                    else
-                        git commit -m "Update deployment image to ${params.IMAGE_TAG}"
-                    fi
-                """
-
-                withCredentials([
-                    gitUsernamePassword(
-                        credentialsId: "github",
-                        gitToolName: "Default"
-                    )
-                ]) {
+                script {
                     sh """
-                        git push origin main
+                        git config user.name "RashmikaHarshamal"
+                        git config user.email "rashmikaharshamal169@gmail.com"
+                        git add deployment.yaml
                     """
+        
+                    def hasChanges = sh(
+                        script: "git diff --cached --quiet",
+                        returnStatus: true
+                    )
+        
+                    if (hasChanges != 0) {
+                        sh """
+                            git commit -m "Update deployment image to ${params.IMAGE_TAG}"
+                        """
+        
+                        withCredentials([
+                            gitUsernamePassword(
+                                credentialsId: "github",
+                                gitToolName: "Default"
+                            )
+                        ]) {
+                            sh """
+                                git push origin main
+                            """
+                        }
+                    } else {
+                        echo "No deployment change found. Commit and push skipped."
+                    }
                 }
             }
         }
