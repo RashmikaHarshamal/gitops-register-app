@@ -5,7 +5,7 @@ pipeline {
         string(
             name: "IMAGE_TAG",
             defaultValue: "",
-            description: "Docker image tag, example: 1.0.0-26"
+            description: "Docker image tag received from the CI pipeline"
         )
     }
 
@@ -32,7 +32,9 @@ pipeline {
             steps {
                 script {
                     if (!params.IMAGE_TAG?.trim()) {
-                        error("IMAGE_TAG is empty. Example: 1.0.0-26")
+                        error(
+                            "IMAGE_TAG is empty. Run the main register-app CI pipeline."
+                        )
                     }
 
                     echo "Received IMAGE_TAG: ${params.IMAGE_TAG}"
@@ -43,12 +45,14 @@ pipeline {
         stage("Update Deployment Image") {
             steps {
                 sh """
-                    echo "Before update:"
+                    echo "Image before update:"
                     grep "image:" deployment.yaml
 
-                    sed -i "s|image: ${IMAGE_REPOSITORY}:.*|image: ${IMAGE_REPOSITORY}:${params.IMAGE_TAG}|" deployment.yaml
+                    sed -i \
+                      "s|image: ${IMAGE_REPOSITORY}:.*|image: ${IMAGE_REPOSITORY}:${params.IMAGE_TAG}|" \
+                      deployment.yaml
 
-                    echo "After update:"
+                    echo "Image after update:"
                     grep "image:" deployment.yaml
                 """
             }
@@ -62,17 +66,17 @@ pipeline {
                         git config user.email "rashmikaharshamal169@gmail.com"
                         git add deployment.yaml
                     """
-        
-                    def hasChanges = sh(
+
+                    def changeStatus = sh(
                         script: "git diff --cached --quiet",
                         returnStatus: true
                     )
-        
-                    if (hasChanges != 0) {
+
+                    if (changeStatus != 0) {
                         sh """
                             git commit -m "Update deployment image to ${params.IMAGE_TAG}"
                         """
-        
+
                         withCredentials([
                             gitUsernamePassword(
                                 credentialsId: "github",
@@ -80,11 +84,11 @@ pipeline {
                             )
                         ]) {
                             sh """
-                                git push origin main
+                                git push origin HEAD:main
                             """
                         }
                     } else {
-                        echo "No deployment change found. Commit and push skipped."
+                        echo "Deployment already uses ${params.IMAGE_TAG}. Push skipped."
                     }
                 }
             }
